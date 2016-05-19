@@ -32,7 +32,7 @@ def answer_questions(system, questions, output_filename, checkpoint_frequency):
             if i is 1 or i == n or i % checkpoint_frequency is 0:
                 logger.info(percent_complete_message("Question", i, n))
             # NLC and Solr cannot handle newlines in questions.
-            answer, confidence = system.ask(question.replace("\n", " "))
+            answer, confidence = system.ask((question))
             logger.debug("%s\t%s\t%s" % (question, answer, confidence))
             answers.write(question, answer, confidence)
     finally:
@@ -63,7 +63,7 @@ def get_answers_from_usage_log(questions, qa_pairs_from_logs):
 
 class Solr(object):
     # TODO Missing the full reserved set: + - && || ! ( ) { } [ ] ^ " ~ * ? : \
-    SOLR_CHARS = re.compile(r"""([\+\-!\[\](){}^"~*?:\\])""")
+    SOLR_CHARS = re.compile(r"""([\+\-!\[\](){}^"~*?:\\||&&])""")
 
     def __init__(self, url):
         self.url = url
@@ -73,18 +73,26 @@ class Solr(object):
         return "Solr: %s" % self.url
 
     def ask(self, question):
+        logger.debug(question)
         question = self.escape_solr_query(question)
         logger.debug(question)
-        r = self.connection.query(question).results
-        n = len(r)
-        logger.debug("%d results" % n)
-        if n:
-            answer = r[0][ANSWER][0]
-            confidence = r[0]["score"]
-        else:
-            answer = None
-            confidence = None
+        try:
+            r = self.connection.query(question).results
+            n = len(r)
+            logger.debug("%d results" % n)
+            if n:
+                answer = r[0][ANSWER][0]
+                confidence = r[0]["score"]
+            else:
+                answer = None
+                confidence = None
+        except:
+            print("EXCEPTION!!!!!!!!!!!!!: ", question)
+            return None, None
         return answer, confidence
+
+
+
 
     def escape_solr_query(self, s):
         s = s.replace("/", "\\/")

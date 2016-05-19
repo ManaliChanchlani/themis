@@ -12,7 +12,7 @@ from themis import configure_logger, CsvFileType, to_csv, QUESTION, ANSWER_ID, p
     __version__, FREQUENCY, ANSWER, IN_PURVIEW, CORRECT, DOCUMENT_ID, ensure_directory_exists
 from themis.analyze import SYSTEM, CollatedFileType, add_judgments_and_frequencies_to_qa_pairs, system_similarity, \
     compare_systems, oracle_combination, filter_judged_answers, corpus_statistics, truth_statistics, \
-    in_purview_disagreement, analyze_answers, truth_coverage
+    in_purview_disagreement
 from themis.answer import answer_questions, Solr, get_answers_from_usage_log, AnswersFileType
 from themis.checkpoint import retry
 from themis.fixup import filter_usage_log_by_date, filter_usage_log_by_user_experience, deakin, filter_corpus
@@ -26,6 +26,9 @@ from themis.trec import corpus_from_trec
 from themis.xmgr import CorpusFileType, XmgrProject, DownloadCorpusFromXmgrClosure, download_truth_from_xmgr, \
     validate_truth_with_corpus, TruthFileType, examine_truth, validate_answers_with_corpus, augment_corpus_answers, \
     augment_corpus_truth
+from themis.rnr import hello, convert_corpus_to_json, create_cluster, check_cluster_status, check_ranker_status, \
+    upload_corpus, upload_schema, upload_truth, associate_config, upload_test_corpus, query_ranker, query_trained_rnr, create_truth, query_untrained_rnr
+
 
 
 def main():
@@ -262,6 +265,9 @@ def answer_command(subparsers):
         3. list
         4. status
         5. delete
+
+    RnR
+        Train an RnR model to answer questions using the ground truth from XMGR.
     """
     qa_shared_arguments = argparse.ArgumentParser(add_help=False)
     qa_shared_arguments.add_argument("questions", type=QuestionSetFileType(),
@@ -321,37 +327,150 @@ def answer_command(subparsers):
     nlc_delete.add_argument("classifiers", nargs="+", help="classifier ids")
     nlc_delete.set_defaults(func=nlc_delete_handler)
 
+    # Manage a RnR model.
+
+    rnr_shared_arguments = argparse.ArgumentParser(add_help=False)
+    rnr_shared_arguments.add_argument("url", help="RnR url")
+    rnr_shared_arguments.add_argument("username", help= "RnR username")
+    rnr_shared_arguments.add_argument("password", help = "RnR password")
+
+    rnr_parser = subparsers.add_parser("rnr", help="answer questions with RnR")
+    rnr_subparsers = rnr_parser.add_subparsers(title="Retrieve and Rank",
+                                               description="train, use and manage RnR models", help="RnR actions")
+
+    # Say hello
+    rnr_hello = rnr_subparsers.add_parser("hello", parents=[rnr_shared_arguments], help="say hello")
+    rnr_hello.set_defaults(func = rnr_hello_handler)
+
+    # Convert corpus to rnr specific json format
+    rnr_corpus_json = rnr_subparsers.add_parser("corpus_json", help="convert corpus to json")
+    rnr_corpus_json.add_argument("corpus_file", help="path to corpus file")
+    rnr_corpus_json.set_defaults(func=rnr_corpus_handler)
+
+    # Create cluster
+    rnr_cluster = rnr_subparsers.add_parser("cluster", parents=[rnr_shared_arguments], help="create cluster")
+    rnr_cluster.set_defaults(func=rnr_cluster_create_handler)
+
+    # Check cluster status
+    rnr_cluster_status = rnr_subparsers.add_parser("cluster_status", parents=[rnr_shared_arguments], help="check cluster status")
+    rnr_cluster_status.add_argument("cluster", help="cluster id")
+    rnr_cluster_status.set_defaults(func=rnr_cluster_status_handler)
+
+    # Upload solr schema zip file
+    rnr_schema = rnr_subparsers.add_parser("schema", parents = [rnr_shared_arguments], help = "upload solr schema")
+    rnr_schema.add_argument("cluster", help="cluster id")
+    rnr_schema.add_argument("zip_file_path", help="path to zip file")
+    rnr_schema.set_defaults(func = rnr_upload_schema_handler)
+
+    # Associate config with schema
+    rnr_config = rnr_subparsers.add_parser("config", parents = [rnr_shared_arguments], help = "associate config to cluster")
+    rnr_config.add_argument("cluster", help="cluster id")
+    rnr_config.set_defaults(func=rnr_associate_config_handler)
+
+    # upload corpus file
+    rnr_corpus_upload = rnr_subparsers.add_parser("corpus_upload", parents = [rnr_shared_arguments],  help = "upload the corpus file to solr")
+    rnr_corpus_upload.add_argument("cluster", help="cluster id")
+    rnr_corpus_upload.add_argument("corpus_file", help="path to corpus file")
+    rnr_corpus_upload.set_defaults(func=rnr_upload_corpus_handler)
+
+    # test the uploaded corpus file
+    rnr_corpus_test = rnr_subparsers.add_parser("corpus_test" , parents = [rnr_shared_arguments], help = "test the uploaded corpus")
+    rnr_corpus_test.add_argument("cluster", help="cluster id")
+    rnr_corpus_test.set_defaults(func = rnr_test_corpus_handler)
+
+    # create ground truth file.
+    rnr_truth = rnr_subparsers.add_parser("truth", help="Modify the truth file to add relevance")
+    rnr_truth.add_argument("truth_file", help="truth file path")
+    rnr_truth.set_defaults(func=rnr_truth_handler)
+
+
+    # check ranker status
+    rnr_ranker_status = rnr_subparsers.add_parser("ranker_status", parents = [rnr_shared_arguments], help=" check the status of ranker")
+    rnr_ranker_status.add_argument("ranker", help= "ranker id")
+    rnr_ranker_status.set_defaults(func = rnr_ranker_status_handler)
+
+    # query ranker
+    rnr_ranker_query = rnr_subparsers.add_parser("ranker_query", parents = [rnr_shared_arguments], help= " query the ranker ")
+    rnr_ranker_query.add_argument("cluster", help="cluster id")
+    rnr_ranker_query.add_argument("ranker", help= "ranker id")
+    rnr_ranker_query.add_argument("question_file", help= "question to solr")
+    rnr_ranker_query.set_defaults(func=rnr_ranker_query_handler)
+
+    # query sample questions
+    rnr_sample_questions_query = rnr_subparsers.add_parser("ranker_query", parents = [rnr_shared_arguments], help= " query the ranker ")
+    rnr_sample_questions_query.add_argument("cluster", help="cluster id")
+    rnr_sample_questions_query.add_argument("ranker", help= "ranker id")
+    rnr_sample_questions_query.add_argument("query_file", help= "sample questions file to query solr")
+    rnr_sample_questions_query.set_defaults(func=rnr_query_trained_rnr_handler)
+
+    rnr_untrained_sample_questions_query = rnr_subparsers.add_parser("untrained_ranker_query", parents = [rnr_shared_arguments], help= " query the ranker ")
+    rnr_untrained_sample_questions_query.add_argument("cluster", help="cluster id")
+    rnr_untrained_sample_questions_query.add_argument("query_file", help= "sample questions file to query solr")
+    rnr_untrained_sample_questions_query.set_defaults(func=rnr_query_untrained_rnr_handler)
 
 def wea_handler(args):
     wea_answers = get_answers_from_usage_log(args.questions, args.qa_pairs)
     to_csv(args.output, wea_answers)
 
-
 def solr_handler(args):
     answer_questions(Solr(args.url), set(args.questions[QUESTION]), args.output, args.checkpoint_frequency)
 
-
 def nlc_train_handler(args):
     print(train_nlc(args.url, args.username, args.password, args.truth, args.name))
-
 
 def nlc_use_handler(args):
     corpus = args.corpus.set_index(ANSWER_ID)
     n = NLC(args.url, args.username, args.password, args.classifier, corpus)
     answer_questions(n, set(args.questions[QUESTION]), args.output, args.checkpoint_frequency)
 
-
 def nlc_list_handler(args):
     print(pretty_print_json(classifier_list(args.url, args.username, args.password)))
-
 
 def nlc_status_handler(args):
     classifier_status(args.url, args.username, args.password, args.classifiers)
 
-
 def nlc_delete_handler(args):
     remove_classifiers(args.url, args.username, args.password, args.classifiers)
 
+def rnr_hello_handler(args):
+    print hello(args.url, args.username, args.password)
+
+def rnr_corpus_handler(args):
+    convert_corpus_to_json(args.corpus_file)
+
+def rnr_cluster_create_handler(args):
+    print (create_cluster(args.url,args.username, args.password))
+
+def rnr_cluster_status_handler(args):
+    print (check_cluster_status(args.url, args.username, args.password, args.cluster))
+
+def rnr_upload_schema_handler(args):
+    print(upload_schema(args.url, args.username, args.password,args.cluster, args.zip_file_path))
+
+def rnr_associate_config_handler(args):
+    print (associate_config(args.url, args.username, args.password,args.cluster))
+
+def rnr_upload_corpus_handler(args):
+    print (upload_corpus(args.url, args.username, args.password, args.cluster, args.corpus_file))
+
+def rnr_test_corpus_handler(args):
+    print(upload_test_corpus(args.url, args.username, args.password, args.cluster))
+
+def rnr_ranker_status_handler(args):
+    print (check_ranker_status(args.url, args.username, args.password, args.ranker))
+
+def rnr_ranker_query_handler(args):
+    print(query_ranker(args.url, args.username, args.password, args.cluster, args.ranker, args.question_file))
+
+def rnr_query_trained_rnr_handler(args):
+    print(query_trained_rnr(args.url, args.username, args.password, args.cluster, args.ranker, args.query_file))
+
+def rnr_query_untrained_rnr_handler(args):
+    print(query_untrained_rnr(args.url, args.username, args.password, args.cluster, args.query_file))
+
+
+def rnr_truth_handler(args):
+    print create_truth(args.truth_file)
 
 class QuestionSetFileType(CsvFileType):
     def __init__(self):
@@ -530,20 +649,6 @@ def analyze_command(parser, subparsers):
                                   help="question set generated by the 'question extract' command")
     questions_parser.add_argument("truth", type=TruthFileType(), help="truth file created by the 'xmgr truth' command")
     questions_parser.set_defaults(func=analyze_questions_handler)
-    # Answer statistics.
-    answer_parser = subparsers.add_parser("answers", help="answered questions statistics")
-    answer_parser.add_argument("collated", nargs="+", type=CollatedFileType(),
-                               help="combined system answers and judgments created by 'analyze collate'")
-    answer_parser.set_defaults(func=analyze_answers_handler)
-    # Truth coverage statistics.
-    truth_coverage_parser = subparsers.add_parser("truth-coverage", help="truth coverage statistics")
-    truth_coverage_parser.add_argument("corpus", type=CorpusFileType(),
-                                       help="corpus file created by the 'download corpus' command")
-    truth_coverage_parser.add_argument("truth", type=TruthFileType(),
-                                       help="truth file created by the 'xmgr truth' command")
-    truth_coverage_parser.add_argument("collated", nargs="+", type=CollatedFileType(),
-                                       help="combined system answers and judgments created by 'analyze collate'")
-    truth_coverage_parser.set_defaults(func=truth_coverage_handler)
     # Find disagreement in purview judgments.
     purview_disagreement_parser = subparsers.add_parser("purview", help="find non-unanimous in-purview judgments")
     purview_disagreement_parser.add_argument("collated", type=CollatedFileType(),
@@ -654,16 +759,6 @@ def analyze_questions_handler(args):
     n = len(questions)
     m = len(pandas.merge(questions, args.truth[[QUESTION]], on=QUESTION))
     print("%d questions, from %s to %s, %d in ground truth (%0.3f%%)" % (len(args.sample), min, max, m, 100.8 * m / n))
-
-
-def analyze_answers_handler(args):
-    summary = analyze_answers(args.collated)
-    print_csv(summary)
-
-
-def truth_coverage_handler(args):
-    coverage = truth_coverage(args.corpus, args.truth, args.collated)
-    print_csv(coverage)
 
 
 def purview_disagreement_handler(args):
