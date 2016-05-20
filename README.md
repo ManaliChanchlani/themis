@@ -95,6 +95,50 @@ After the model has been trained, you can submit questions to it.
 
 If the command to ask questions to either Solr or NLC fails you can rerun it and it will pick up where it left off.
 
+
+To ask questions of RnR we must first train a model using the truth file downloaded from XMGR as training data.
+
+create corpus.json:
+    themis answer rnr corpus_json CORPUS.CSV-FILE
+
+    add commit:{} at the end of the json file created to index solr
+
+create cluster:
+    themis answer rnr cluster RNR-URL USERNAME PASSWORD
+    (note the cluster id from response)
+
+check cluster status:
+    themis answer rnr cluster_status RNR-URL USERNAME PASSWORD CLUSTER-ID
+
+upload solr schema:
+    themis answer rnr schema RNR-URL USERNAME PASSWORD CLUSTER-ID SCHEMA-ZIP-FILE
+
+associate config:
+    themis answer rnr config RNR-URL USERNAME PASSWORD CLUSTER-ID
+
+upload corpus.json :
+    themis answer rnr corpus_upload RNR-URL USERNAME PASSWORD CLUSTER-ID CORPUS.JSON-FILE
+
+test corpus:
+    themis answer rnr corpus_test RNR-URL USERNAME PASSWORD CLUSTER-ID
+
+modify truth file to add relevance:
+    themis answer rnr truth TRUTH-FILE
+
+upload truth file: (the train.py script is given by RnR team and recommended not be modified)
+    python train.py -u USERNAME:PASSWORD -i TRUTH-FILE -c CLUSTER-ID -x "example_collection" -n "themis-ranker"
+    (note the ranker id from the response)
+
+check ranker status:
+    themis answer rnr ranker_status RNR-URL USERNAME PASSWORD RANKER-ID
+
+query trained ranker:
+    themis answer rnr ranker_query RNR-URL USERNAME PASSWORD CLUSTER-ID RANKER-ID SAMPLE-QUESTIONS-FILE
+
+untrained:
+    themis answer rnr untrained_ranker_query RNR-URL USERNAME PASSWORD CLUSTER-ID SAMPLE-QUESTIONS-FILE
+
+
 ### Submit Answers to Annotation Assist
 
 A human annotator needs to judge whether the answers to the questions returned by the various systems are correct.

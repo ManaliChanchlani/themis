@@ -5,18 +5,13 @@ import pandas as pd
 
 BASE_URL = "https://gateway.watsonplatform.net/retrieve-and-rank/api/"
 
-def hello(USERNAME, PASSWORD, URL):
-    return "hello"
-
 def convert_corpus_to_json(CORPUS_FILE):
     df = pd.read_csv(CORPUS_FILE)
     df = df[['Answer', 'Answer Id']]
-    # f = open('corpus.json', 'w')
-    f = open('metlife/corpus_trial.json', 'w')
+    f = open('corpus_temp.json', 'w')
     df.to_json(f, orient = 'records')
 
-
-    with open('metlife/corpus_trial.json', 'r') as f:
+    with open('corpus_temp.json', 'r') as f:
         data = json.load(f)
     a = []
     for row in data:
@@ -24,7 +19,7 @@ def convert_corpus_to_json(CORPUS_FILE):
         a.append(("add", temp))
 
     out = '{%s}' % ',\n'.join(['"{}": {}'.format(action, json.dumps(dictionary)) for action, dictionary in a])
-    with open ('metlife/corpus.json', 'w') as f:
+    with open ('corpus.json', 'w') as f:
         f.write(out)
 
 
@@ -79,10 +74,8 @@ def create_truth(TRUTH_FILE):
     df = pd.read_csv(TRUTH_FILE)
     df = df[['Question', 'Answer Id']]
     df['Question'] = df['Question'].str.replace(":", "")
-    print(df.keys())
     df['Relevance'] = 4
-    print(df.keys())
-    df.to_csv('metlife/rnr_truthincorpus.csv', index = False, header = False)
+    df.to_csv('rnr_truthincorpus.csv', index = False, header = False)
 
 
 def check_ranker_status(BASE_URL,USERNAME, PASSWORD, RANKER_ID):
@@ -97,10 +90,12 @@ def query_ranker(BASE_URL,USERNAME, PASSWORD, CLUSTER_ID, RANKER_ID, QUERY):
     resp = requests.get(BASE_URL+'v1/solr_clusters/'+CLUSTER_ID+'/solr/example_collection/fcselect?ranker_id='+RANKER_ID+'&q='+QUERY+'&wt=json', auth=cred)
     return resp.text
 
+
 def query_untrained_ranker(BASE_URL, USERNAME, PASSWORD, CLUSTER_ID, QUERY):
     cred = (USERNAME, PASSWORD)
     resp = requests.get(BASE_URL+'v1/solr_clusters/'+CLUSTER_ID+'/solr/example_collection/fcselect?q='+QUERY+'&wt=json', auth=cred)
     return resp.text
+
 
 def query_trained_rnr(BASE_URL,USERNAME, PASSWORD, CLUSTER_ID, RANKER_ID, QUESTION_FILE):
     answers = []
@@ -111,11 +106,10 @@ def query_trained_rnr(BASE_URL,USERNAME, PASSWORD, CLUSTER_ID, RANKER_ID, QUESTI
     for row in rows:
         query = row['Question'].replace("#", "").replace(":","")
         resp = query_ranker(BASE_URL, USERNAME,PASSWORD,CLUSTER_ID,RANKER_ID, query)
-        # if resp.status == 200:
         try:
             res = json.loads(resp)
         except:
-            print resp.status_code, resp.text
+            print resp.text
             answers.append([query,0,"Query Error"])
             continue
 
@@ -124,11 +118,12 @@ def query_trained_rnr(BASE_URL,USERNAME, PASSWORD, CLUSTER_ID, RANKER_ID, QUESTI
         else:
             answers.append([query, 0, "No docs returned from RnR"])
 
-    with open('deakin/answers.trained.rnr.csv', 'w') as f:
+    with open('answers.trained.rnr.csv', 'w') as f:
         output_writer = csv.writer(f)
         output_writer.writerow(['Question', 'Confidence', 'Answer'])
         for r in answers:
             output_writer.writerow((r))
+
 
 def query_untrained_rnr(BASE_URL,USERNAME, PASSWORD, CLUSTER_ID, QUESTION_FILE):
     answers = []
@@ -139,12 +134,10 @@ def query_untrained_rnr(BASE_URL,USERNAME, PASSWORD, CLUSTER_ID, QUESTION_FILE):
     for row in rows:
         query = row['Question'].replace("#", "")
         resp = query_untrained_ranker(BASE_URL, USERNAME,PASSWORD,CLUSTER_ID, query)
-        # if resp.status_code == 200:
         try:
             res = json.loads(resp)
         except:
-            print "inside error!!!!!!!"
-            # print resp.status_code, resp.text
+            print resp.text
             answers.append([query,0,"Query Error"])
             continue
 
@@ -153,7 +146,7 @@ def query_untrained_rnr(BASE_URL,USERNAME, PASSWORD, CLUSTER_ID, QUESTION_FILE):
         else:
             answers.append([query, 0, "No docs returned from RnR"])
 
-    with open('metlife/answers.untrained.rnr.csv', 'w') as f:
+    with open('answers.untrained.rnr.csv', 'w') as f:
         output_writer = csv.writer(f)
         output_writer.writerow(['Question', 'Confidence', 'Answer'])
         for r in answers:

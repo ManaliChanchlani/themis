@@ -26,8 +26,8 @@ from themis.trec import corpus_from_trec
 from themis.xmgr import CorpusFileType, XmgrProject, DownloadCorpusFromXmgrClosure, download_truth_from_xmgr, \
     validate_truth_with_corpus, TruthFileType, examine_truth, validate_answers_with_corpus, augment_corpus_answers, \
     augment_corpus_truth
-from themis.rnr import hello, convert_corpus_to_json, create_cluster, check_cluster_status, check_ranker_status, \
-    upload_corpus, upload_schema, upload_truth, associate_config, upload_test_corpus, query_ranker, query_trained_rnr, create_truth, query_untrained_rnr
+from themis.rnr import convert_corpus_to_json, create_cluster, check_cluster_status, check_ranker_status, \
+    upload_corpus, upload_schema, associate_config, upload_test_corpus, query_ranker, query_trained_rnr, create_truth, query_untrained_rnr
 
 
 
@@ -338,10 +338,6 @@ def answer_command(subparsers):
     rnr_subparsers = rnr_parser.add_subparsers(title="Retrieve and Rank",
                                                description="train, use and manage RnR models", help="RnR actions")
 
-    # Say hello
-    rnr_hello = rnr_subparsers.add_parser("hello", parents=[rnr_shared_arguments], help="say hello")
-    rnr_hello.set_defaults(func = rnr_hello_handler)
-
     # Convert corpus to rnr specific json format
     rnr_corpus_json = rnr_subparsers.add_parser("corpus_json", help="convert corpus to json")
     rnr_corpus_json.add_argument("corpus_file", help="path to corpus file")
@@ -383,7 +379,6 @@ def answer_command(subparsers):
     rnr_truth.add_argument("truth_file", help="truth file path")
     rnr_truth.set_defaults(func=rnr_truth_handler)
 
-
     # check ranker status
     rnr_ranker_status = rnr_subparsers.add_parser("ranker_status", parents = [rnr_shared_arguments], help=" check the status of ranker")
     rnr_ranker_status.add_argument("ranker", help= "ranker id")
@@ -396,13 +391,14 @@ def answer_command(subparsers):
     rnr_ranker_query.add_argument("question_file", help= "question to solr")
     rnr_ranker_query.set_defaults(func=rnr_ranker_query_handler)
 
-    # query sample questions
+    # query sample questions for trained RnR
     rnr_sample_questions_query = rnr_subparsers.add_parser("ranker_query", parents = [rnr_shared_arguments], help= " query the ranker ")
     rnr_sample_questions_query.add_argument("cluster", help="cluster id")
     rnr_sample_questions_query.add_argument("ranker", help= "ranker id")
     rnr_sample_questions_query.add_argument("query_file", help= "sample questions file to query solr")
     rnr_sample_questions_query.set_defaults(func=rnr_query_trained_rnr_handler)
 
+    # query sample questions for untrained RnR
     rnr_untrained_sample_questions_query = rnr_subparsers.add_parser("untrained_ranker_query", parents = [rnr_shared_arguments], help= " query the ranker ")
     rnr_untrained_sample_questions_query.add_argument("cluster", help="cluster id")
     rnr_untrained_sample_questions_query.add_argument("query_file", help= "sample questions file to query solr")
@@ -431,9 +427,6 @@ def nlc_status_handler(args):
 
 def nlc_delete_handler(args):
     remove_classifiers(args.url, args.username, args.password, args.classifiers)
-
-def rnr_hello_handler(args):
-    print hello(args.url, args.username, args.password)
 
 def rnr_corpus_handler(args):
     convert_corpus_to_json(args.corpus_file)
@@ -468,9 +461,8 @@ def rnr_query_trained_rnr_handler(args):
 def rnr_query_untrained_rnr_handler(args):
     print(query_untrained_rnr(args.url, args.username, args.password, args.cluster, args.query_file))
 
-
 def rnr_truth_handler(args):
-    print create_truth(args.truth_file)
+    print(create_truth(args.truth_file))
 
 class QuestionSetFileType(CsvFileType):
     def __init__(self):

@@ -9,8 +9,7 @@ import getopt
 import urllib
 
 #remove the ranker training file (just in case it's left over from a previous run)
-TRAININGDATA='trainingdata2.txt'
-# TRAININGDATA='modified_trainingdata.txt'
+TRAININGDATA='trainingdata.txt'
 
 try:
     os.remove(TRAININGDATA)
@@ -100,8 +99,6 @@ with open(RELEVANCE_FILE, 'rb') as csvfile:
                print (curl_cmd)
                print ('Response:')
                print (output)
-               # continue
-            # training_file.write(parsed_json['RSInput'])
                raise
             add_header = 'false'
 print ('Generating training data complete.')
